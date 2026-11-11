@@ -1,0 +1,27 @@
+# Continuous integration of the frontend: types and a production build.
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Types
+        run: npm run typecheck
+      # No backend runs here: the ISR and SSG pages must build with their fallback content, exactly
+      # as they do on Vercel when the API on Render is asleep during a deployment.
+      - name: Production build without the API
+        env:
+          NEXT_PUBLIC_API_URL: http://127.0.0.1:9
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: npm run build:offline

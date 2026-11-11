@@ -1,31 +1,31 @@
 /// <reference lib="webworker" />
 /**
- * Web Worker: lee y valida un CSV en un hilo aparte del navegador.
+ * Web Worker: reads and validates a CSV in a thread separate from the page.
  *
- * Con un archivo de decenas de miles de filas, parsear y validar en el hilo principal
- * congelaría la página (no responderían los clics ni las animaciones). Aquí el hilo principal
- * solo envía el File y recibe mensajes de avance y el resultado.
+ * With a file of tens of thousands of rows, parsing and validating on the main thread would freeze
+ * the page (clicks and animations would stop responding). Here the main thread only sends the File
+ * and receives progress messages and the result.
  *
- *   principal → worker  { tipo: "analizar", id, archivo, esquema, contexto }
- *   worker → principal  { tipo: "avance", id, filas, fraccion } | { tipo: "resultado", id, resultado }
- *                       | { tipo: "error", id, mensaje }
+ *   page → worker  { type: "analyze", id, file, kind, context }
+ *   worker → page  { type: "progress", id, rows, fraction } | { type: "result", id, result }
+ *                  | { type: "error", id, message }
  */
-import { analizarCsv } from "./csv/analizar";
-import { decodificar } from "./csv/lector";
-import type { MensajeAlWorkerCsv, MensajeDelWorkerCsv } from "./csv/mensajes";
+import { analyzeCsv } from "./csv/analyze";
+import { decode } from "./csv/reader";
+import type { CsvWorkerMessage, CsvWorkerRequest } from "./csv/messages";
 
 const MAX_BYTES = 20 * 1024 * 1024;
-const contexto = self as unknown as DedicatedWorkerGlobalScope;
-const enviar = (m: MensajeDelWorkerCsv) => contexto.postMessage(m);
+const scope = self as unknown as DedicatedWorkerGlobalScope;
+const post = (m: CsvWorkerMessage) => scope.postMessage(m);
 
-contexto.onmessage = async (e: MessageEvent<MensajeAlWorkerCsv>) => {
-  const { id, archivo, esquema, contexto: ctx } = e.data;
+scope.onmessage = async (e: MessageEvent<CsvWorkerRequest>) => {
+  const { id, file, kind, context } = e.data;
   try {
-    if (archivo.size > MAX_BYTES) throw new Error("El archivo supera 20 MB");
-    const { texto, codificacion } = decodificar(await archivo.arrayBuffer());
-    const resultado = analizarCsv(texto, codificacion, esquema, ctx, (filas, fraccion) => enviar({ tipo: "avance", id, filas, fraccion }));
-    enviar({ tipo: "resultado", id, resultado });
+    if (file.size > MAX_BYTES) throw new Error("El archivo supera 20 MB");
+    const { text, encoding } = decode(await file.arrayBuffer());
+    const result = analyzeCsv(text, encoding, kind, context, (rows, fraction) => post({ type: "progress", id, rows, fraction }));
+    post({ type: "result", id, result });
   } catch (err) {
-    enviar({ tipo: "error", id, mensaje: err instanceof Error ? err.message : "No se pudo leer el archivo" });
+    post({ type: "error", id, message: err instanceof Error ? err.message : "No se pudo leer el archivo" });
   }
 };

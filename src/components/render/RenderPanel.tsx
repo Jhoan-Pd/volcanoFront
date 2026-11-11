@@ -3,31 +3,31 @@
 import { ChevronDown, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { useState, useSyncExternalStore, useTransition } from "react";
-import { revalidarAhora } from "@/app/acciones";
-import { PATRONES, REVALIDAR_TABLEROS, type Patron } from "@/lib/patrones";
+import { revalidateNow } from "@/app/actions";
+import { DASHBOARD_REVALIDATE_S, PATTERNS, type Pattern } from "@/lib/renderPatterns";
 
 // ---------------------------------------------------------------------------
-// "Tiendas" del navegador: en el servidor devuelven null, así el HTML inicial
-// nunca depende de la hora del cliente (no hay errores de hidratación).
+// Browser "stores": on the server they return null, so the initial HTML never
+// depends on the client's clock (no hydration errors).
 // ---------------------------------------------------------------------------
-function suscribirReloj(cb: () => void) {
-  const id = setInterval(cb, 1000);
+function subscribeClock(onTick: () => void) {
+  const id = setInterval(onTick, 1000);
   return () => clearInterval(id);
 }
-const leerSegundo = () => Math.floor(Date.now() / 1000) * 1000;
-const sinSuscripcion = () => () => {};
+const currentSecond = () => Math.floor(Date.now() / 1000) * 1000;
+const noSubscription = () => () => {};
 
-/** Time To First Byte de la carga de este documento (ms), o -1 si se llegó navegando en el cliente. */
-function leerTTFB() {
+/** Time To First Byte of this document's load (ms), or -1 when the page was reached by client navigation. */
+function readTtfb() {
   const nav = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
   if (!nav) return -1;
   const url = new URL(nav.name);
   return url.pathname + url.search === location.pathname + location.search ? Math.round(nav.responseStart) : -1;
 }
 
-const hora = (iso: string) => new Date(iso).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-const fecha = (iso: string) => new Date(iso).toLocaleDateString("es-CO", { day: "numeric", month: "short", year: "numeric" });
-function hace(ms: number) {
+const time = (iso: string) => new Date(iso).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+const date = (iso: string) => new Date(iso).toLocaleDateString("es-CO", { day: "numeric", month: "short", year: "numeric" });
+function ago(ms: number) {
   const s = Math.max(0, Math.round(ms / 1000));
   if (s < 60) return `hace ${s} s`;
   if (s < 3600) return `hace ${Math.floor(s / 60)} min`;
@@ -35,58 +35,62 @@ function hace(ms: number) {
   return `hace ${Math.floor(s / 86_400)} d`;
 }
 
-const GENERADO: Record<Patron, string> = {
+const GENERATED_LABEL: Record<Pattern, string> = {
   SSG: "HTML generado en el build",
   ISR: "HTML generado a las",
   SSR: "HTML generado a las",
   CSR: "Datos recibidos a las",
 };
 
+export interface PanelDetail { label: string; value: string }
+
 interface Props {
-  patron: Patron;
-  /** Cuándo se generaron los datos de esta vista (ISO). En CSR, cuándo llegó la respuesta. */
-  generadoEn: string | null;
-  /** Solo ISR: ruta que se puede revalidar bajo demanda. */
-  ruta?: string;
-  detalles?: { etiqueta: string; valor: string }[];
-  porQue?: string;
+  pattern: Pattern;
+  /** When this view's data was generated (ISO). In CSR, when the response arrived. */
+  generatedAt: string | null;
+  /** ISR only: the path that can be revalidated on demand. */
+  path?: string;
+  details?: PanelDetail[];
+  why?: string;
 }
 
 /**
- * Panel plegable que explica cómo se renderizó la página que se está viendo. Expone
- * `data-render-patron` y `data-render-generado` para que la página /patrones los mida.
+ * Collapsible panel explaining how the page on screen was rendered. It exposes
+ * `data-render-pattern` and `data-render-generated` so the /patrones page can measure them.
  */
-export function RenderPanel({ patron, generadoEn, ruta, detalles = [], porQue }: Props) {
-  const info = PATRONES[patron];
-  const [abierto, setAbierto] = useState(false);
-  const ahora = useSyncExternalStore(suscribirReloj, leerSegundo, () => null);
-  const ttfb = useSyncExternalStore(sinSuscripcion, leerTTFB, () => null);
-  const [revalidando, iniciar] = useTransition();
-  const [mensaje, setMensaje] = useState<string | null>(null);
+export function RenderPanel({ pattern, generatedAt, path, details = [], why }: Props) {
+  const info = PATTERNS[pattern];
+  const [open, setOpen] = useState(false);
+  const now = useSyncExternalStore(subscribeClock, currentSecond, () => null);
+  const ttfb = useSyncExternalStore(noSubscription, readTtfb, () => null);
+  const [revalidating, startRevalidation] = useTransition();
+  const [message, setMessage] = useState<string | null>(null);
 
-  const generadoMs = generadoEn ? new Date(generadoEn).getTime() : null;
-  const edad = ahora !== null && generadoMs !== null ? ahora - generadoMs : null;
-  const restante = patron === "ISR" && generadoMs !== null && ahora !== null
-    ? generadoMs + REVALIDAR_TABLEROS * 1000 - ahora : null;
-  const color = `var(--pat-${patron.toLowerCase()})`;
+  const generatedMs = generatedAt ? new Date(generatedAt).getTime() : null;
+  const age = now !== null && generatedMs !== null ? now - generatedMs : null;
+  const remaining = pattern === "ISR" && generatedMs !== null && now !== null
+    ? generatedMs + DASHBOARD_REVALIDATE_S * 1000 - now : null;
+  const color = `var(--pat-${pattern.toLowerCase()})`;
+  const generatedText = generatedAt
+    ? (pattern === "SSG" ? `${date(generatedAt)}, ${time(generatedAt)}` : time(generatedAt)) : "—";
 
   return (
-    <aside data-render-patron={patron} data-render-generado={generadoEn ?? ""}
+    <aside data-render-pattern={pattern} data-render-generated={generatedAt ?? ""}
       className="rounded-lg print:hidden border bg-surface text-sm"
       style={{ borderColor: `color-mix(in srgb, ${color} 45%, var(--line))` }}>
-      <button type="button" onClick={() => setAbierto((v) => !v)} aria-expanded={abierto}
+      <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open}
         className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-left">
-        <span className="rounded-md px-2 py-0.5 font-mono text-xs font-bold text-white" style={{ background: color }}>{patron}</span>
-        <strong className="font-medium text-ink">{info.nombre}</strong>
+        <span className="rounded-md px-2 py-0.5 font-mono text-xs font-bold text-white" style={{ background: color }}>{pattern}</span>
+        <strong className="font-medium text-ink">{info.name}</strong>
         <span className="min-w-0 flex-1 truncate text-xs text-muted">
-          {generadoEn ? `${GENERADO[patron]} ${patron === "SSG" ? fecha(generadoEn) : hora(generadoEn)}` : "Esperando datos…"}
-          {edad !== null && ` · ${hace(edad)}`}
+          {generatedAt ? `${GENERATED_LABEL[pattern]} ${pattern === "SSG" ? date(generatedAt) : time(generatedAt)}` : "Esperando datos…"}
+          {age !== null && ` · ${ago(age)}`}
         </span>
-        <ChevronDown size={15} className={`text-muted transition ${abierto ? "rotate-180" : ""}`} aria-hidden />
+        <ChevronDown size={15} className={`text-muted transition ${open ? "rotate-180" : ""}`} aria-hidden />
       </button>
 
-      {abierto && (
-        <div className="entrar border-t border-line px-4 py-3">
+      {open && (
+        <div className="enter border-t border-line px-4 py-3">
           {process.env.NODE_ENV === "development" && (
             <p className="mb-3 rounded-md bg-surface-2 px-3 py-2 text-xs text-ink-2">
               Modo desarrollo: Next.js renderiza todas las páginas en cada petición. Para ver SSG e ISR de verdad usa
@@ -94,39 +98,39 @@ export function RenderPanel({ patron, generadoEn, ruta, detalles = [], porQue }:
             </p>
           )}
           <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Dato etiqueta={GENERADO[patron]} valor={generadoEn ? (patron === "SSG" ? `${fecha(generadoEn)}, ${hora(generadoEn)}` : hora(generadoEn)) : "—"} />
-            <Dato etiqueta="Antigüedad del contenido" valor={edad !== null ? hace(edad) : "—"} />
-            {patron === "ISR" && (
-              <Dato etiqueta={`Ventana de ISR (${REVALIDAR_TABLEROS / 60} min)`}
-                valor={restante === null ? "—" : restante > 0 ? `Vigente: vence en ${Math.ceil(restante / 60_000)} min`
+            <Detail label={GENERATED_LABEL[pattern]} value={generatedText} />
+            <Detail label="Antigüedad del contenido" value={age !== null ? ago(age) : "—"} />
+            {pattern === "ISR" && (
+              <Detail label={`Ventana de ISR (${DASHBOARD_REVALIDATE_S / 60} min)`}
+                value={remaining === null ? "—" : remaining > 0 ? `Vigente: vence en ${Math.ceil(remaining / 60_000)} min`
                   : "Vencida: la próxima visita la regenera"} />
             )}
-            <Dato etiqueta="TTFB de esta carga" valor={ttfb === null ? "—" : ttfb < 0 ? "Recarga para medir" : `${ttfb} ms`} />
-            {detalles.map((d) => <Dato key={d.etiqueta} etiqueta={d.etiqueta} valor={d.valor} />)}
+            <Detail label="TTFB de esta carga" value={ttfb === null ? "—" : ttfb < 0 ? "Recarga para medir" : `${ttfb} ms`} />
+            {details.map((d) => <Detail key={d.label} label={d.label} value={d.value} />)}
           </dl>
           <div className="mt-3 grid gap-1 text-xs text-ink-2 md:grid-cols-3">
-            <p><b className="font-medium text-ink">Dónde:</b> {info.donde}</p>
+            <p><b className="font-medium text-ink">Dónde:</b> {info.where}</p>
             <p><b className="font-medium text-ink">SEO:</b> {info.seo}</p>
-            <p><b className="font-medium text-ink">Frescura:</b> {info.frescura}</p>
+            <p><b className="font-medium text-ink">Frescura:</b> {info.freshness}</p>
           </div>
-          <p className="mt-2 text-xs text-ink-2"><b className="font-medium text-ink">¿Por qué {patron} aquí?</b> {porQue ?? info.porQue}</p>
+          <p className="mt-2 text-xs text-ink-2"><b className="font-medium text-ink">¿Por qué {pattern} aquí?</b> {why ?? info.why}</p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <button type="button" onClick={() => window.location.reload()}
               className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-xs font-medium hover:bg-surface-2">
               <RefreshCw size={13} aria-hidden /> Recargar
             </button>
-            {patron === "ISR" && ruta && (
-              <button type="button" disabled={revalidando}
-                onClick={() => iniciar(async () => {
-                  const r = await revalidarAhora(ruta);
-                  setMensaje(r.ok ? "Listo: recarga para ver la versión regenerada." : r.mensaje);
+            {pattern === "ISR" && path && (
+              <button type="button" disabled={revalidating}
+                onClick={() => startRevalidation(async () => {
+                  const r = await revalidateNow(path);
+                  setMessage(r.ok ? "Listo: recarga para ver la versión regenerada." : r.message);
                 })}
                 className="rounded-lg border border-line px-3 py-1.5 text-xs font-medium hover:bg-surface-2 disabled:opacity-50">
-                {revalidando ? "Revalidando…" : "Revalidar ahora (bajo demanda)"}
+                {revalidating ? "Revalidando…" : "Revalidar ahora (bajo demanda)"}
               </button>
             )}
-            <span className="text-[11px] text-muted">{mensaje ?? info.pista}</span>
-            <Link href="/patrones" className="subrayar ml-auto text-[11px] text-ink-2">Comparar los 4 patrones →</Link>
+            <span className="text-[11px] text-muted">{message ?? info.hint}</span>
+            <Link href="/patrones" className="underline-grow ml-auto text-[11px] text-ink-2">Comparar los 4 patrones →</Link>
           </div>
         </div>
       )}
@@ -134,11 +138,11 @@ export function RenderPanel({ patron, generadoEn, ruta, detalles = [], porQue }:
   );
 }
 
-function Dato({ etiqueta, valor }: { etiqueta: string; valor: string }) {
+function Detail({ label, value }: PanelDetail) {
   return (
     <div>
-      <dt className="text-[11px] text-muted">{etiqueta}</dt>
-      <dd className="tabular font-medium text-ink">{valor}</dd>
+      <dt className="text-[11px] text-muted">{label}</dt>
+      <dd className="tabular font-medium text-ink">{value}</dd>
     </div>
   );
 }

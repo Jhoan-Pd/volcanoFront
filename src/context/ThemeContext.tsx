@@ -1,41 +1,42 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { THEME_KEY } from "@/lib/theme";
 
-type Tema = "claro" | "oscuro";
-const ThemeContext = createContext<{ tema: Tema; alternar: () => void } | null>(null);
+type Theme = "light" | "dark";
+const ThemeContext = createContext<{ theme: Theme; toggle: () => void } | null>(null);
 
 /**
- * El script de <head> (layout.tsx) pone la clase `dark` antes de pintar. El servidor no sabe
- * qué tema eligió el usuario, así que el estado empieza vacío y se lee de <html> al montar:
- * así el HTML del servidor y el primer render del cliente coinciden (sin error de hidratación).
+ * The <head> script (layout.tsx) sets the `dark` class before painting. The server does not know
+ * which theme the user chose, so the state starts empty and is read from <html> on mount: that way
+ * the server's HTML and the client's first render match (no hydration error).
  */
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [tema, setTema] = useState<Tema | null>(null);
+  const [theme, setTheme] = useState<Theme | null>(null);
 
   useEffect(() => {
-    setTema(document.documentElement.classList.contains("dark") ? "oscuro" : "claro");
+    setTheme(document.documentElement.classList.contains("dark") ? "dark" : "light");
   }, []);
 
   useEffect(() => {
-    if (!tema) return;
-    document.documentElement.classList.toggle("dark", tema === "oscuro");
+    if (!theme) return;
+    document.documentElement.classList.toggle("dark", theme === "dark");
     try {
-      localStorage.setItem("tema", tema);
+      localStorage.setItem(THEME_KEY, theme);
     } catch {
-      /* sin almacenamiento: el tema solo dura la sesión */
+      /* no storage: the theme only lasts for the session */
     }
-  }, [tema]);
+  }, [theme]);
 
   return (
-    <ThemeContext.Provider value={{ tema: tema ?? "claro", alternar: () => setTema((t) => (t === "oscuro" ? "claro" : "oscuro")) }}>
+    <ThemeContext.Provider value={{ theme: theme ?? "light", toggle: () => setTheme((t) => (t === "dark" ? "light" : "dark")) }}>
       {children}
     </ThemeContext.Provider>
   );
 }
 
-export function useTema() {
+export function useTheme() {
   const ctx = useContext(ThemeContext);
-  if (!ctx) throw new Error("useTema debe usarse dentro de <ThemeProvider>");
+  if (!ctx) throw new Error("useTheme must be used inside <ThemeProvider>");
   return ctx;
 }

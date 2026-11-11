@@ -3,26 +3,26 @@
 import { useEffect, useState } from "react";
 
 /**
- * Cuadros por segundo del hilo principal, medidos con requestAnimationFrame. Sirve para
- * demostrar que un Web Worker trabaja sin congelar la página: si el cálculo corriera aquí,
- * los fps caerían a casi cero mientras dura.
+ * Frames per second of the main thread, measured with requestAnimationFrame. It proves that a Web
+ * Worker works without freezing the page: if the computation ran here, the fps would drop to almost
+ * zero while it lasts.
  */
-export function useFps(activo: boolean) {
+export function useFps(active: boolean) {
   const [fps, setFps] = useState<number | null>(null);
   useEffect(() => {
-    if (!activo) { setFps(null); return; }
-    let cuadros = 0;
-    let inicio = performance.now();
-    let id = requestAnimationFrame(function paso(ahora) {
-      cuadros++;
-      if (ahora - inicio >= 500) {
-        setFps(Math.round((cuadros * 1000) / (ahora - inicio)));
-        cuadros = 0;
-        inicio = ahora;
+    if (!active) { setFps(null); return; }
+    let frames = 0;
+    let start = performance.now();
+    let id = requestAnimationFrame(function step(now) {
+      frames++;
+      if (now - start >= 500) {
+        setFps(Math.round((frames * 1000) / (now - start)));
+        frames = 0;
+        start = now;
       }
-      id = requestAnimationFrame(paso);
+      id = requestAnimationFrame(step);
     });
     return () => cancelAnimationFrame(id);
-  }, [activo]);
+  }, [active]);
   return fps;
 }
