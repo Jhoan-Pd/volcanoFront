@@ -1,17 +1,17 @@
-// FARMACIA — CSR: panel privado del rol FARMACIA (token en el navegador). La carga masiva de
-// reportes revisa el CSV en un Web Worker y lo envía al motor por client streaming de gRPC.
+// PHARMACY — CSR: private panel of the PHARMACY role (token in the browser). The bulk upload of
+// reports checks the CSV in a Web Worker and sends it to the engine over gRPC client streaming.
 import type { Metadata } from "next";
-import { PanelCSR } from "@/components/render/PanelCSR";
-import RutaProtegida from "@/components/RutaProtegida";
-import FarmaciaPage from "@/vistas/FarmaciaPage";
+import ProtectedRoute from "@/components/ProtectedRoute";
+import { CsrPanel } from "@/components/render/CsrPanel";
+import PharmacyView from "@/views/PharmacyPage";
 
 export const metadata: Metadata = { title: "Panel de farmacia", robots: { index: false } };
 
-export default function PaginaFarmacia() {
+export default function PharmacyPage() {
   return (
     <div className="space-y-5">
-      <PanelCSR porQue="Cada farmacia ve solo sus reportes: los datos dependen del usuario que inició sesión y se piden desde el navegador." />
-      <RutaProtegida roles={["FARMACIA", "ADMIN"]}><FarmaciaPage /></RutaProtegida>
+      <CsrPanel why="Cada farmacia ve solo sus reportes: los datos dependen del usuario que inició sesión y se piden desde el navegador." />
+      <ProtectedRoute roles={["PHARMACY", "ADMIN"]}><PharmacyView /></ProtectedRoute>
     </div>
   );
 }

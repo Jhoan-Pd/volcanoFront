@@ -1,57 +1,56 @@
 /**
- * Lector de Server-Sent Events sobre fetch.
+ * Server-Sent Events reader on top of fetch.
  *
- * EventSource (el API nativo) solo hace GET y no deja enviar cabeceras: sirve para el stream
- * público de alertas, pero no para entrenar, que es un POST con el token del administrador.
- * Aquí se lee el cuerpo de la respuesta con un ReadableStream y se separan los eventos según el
- * formato text/event-stream («event:», «data:» y una línea en blanco al final de cada evento).
+ * EventSource (the native API) only does GET and cannot send headers, while training is a POST that
+ * carries the administrator's token. The response body is read as a ReadableStream and split into
+ * events following the text/event-stream format ("event:", "data:" and a blank line after each event).
  */
-export interface EventoSSE<T = unknown> {
-  evento: string;
-  datos: T;
+export interface SseEvent<T = unknown> {
+  event: string;
+  data: T;
 }
 
-export class ErrorSSE extends Error {
-  constructor(public estado: number, mensaje: string, public codigo?: string) {
-    super(mensaje);
+export class SseError extends Error {
+  constructor(public status: number, message: string, public code?: string) {
+    super(message);
   }
 }
 
-export async function* leerSSE<T>(url: string, init: RequestInit = {}): AsyncGenerator<EventoSSE<T>> {
+export async function* readSse<T>(url: string, init: RequestInit = {}): AsyncGenerator<SseEvent<T>> {
   const r = await fetch(url, { ...init, headers: { Accept: "text/event-stream", ...init.headers } });
   if (!r.ok || !r.body) {
-    // Antes de abrir el stream la API responde errores normales en JSON (409, 403, 503…)
-    let mensaje = `Error ${r.status}`;
-    let codigo: string | undefined;
+    // Before the stream opens the API answers regular JSON errors (409, 403, 503…)
+    let message = `Error ${r.status}`;
+    let code: string | undefined;
     try {
-      const cuerpo = await r.json();
-      mensaje = cuerpo?.error?.mensaje ?? mensaje;
-      codigo = cuerpo?.error?.codigo;
-    } catch { /* sin cuerpo JSON */ }
-    throw new ErrorSSE(r.status, mensaje, codigo);
+      const body = await r.json();
+      message = body?.error?.message ?? message;
+      code = body?.error?.code;
+    } catch { /* no JSON body */ }
+    throw new SseError(r.status, message, code);
   }
-  const lector = r.body.pipeThrough(new TextDecoderStream()).getReader();
-  let pendiente = "";
+  const reader = r.body.pipeThrough(new TextDecoderStream()).getReader();
+  let pending = "";
   try {
     while (true) {
-      const { value, done } = await lector.read();
+      const { value, done } = await reader.read();
       if (done) break;
-      pendiente += value;
-      let corte: number;
-      while ((corte = pendiente.search(/\r?\n\r?\n/)) >= 0) {
-        const bloque = pendiente.slice(0, corte);
-        pendiente = pendiente.slice(corte).replace(/^\r?\n\r?\n/, "");
-        let evento = "message";
-        const datos: string[] = [];
-        for (const linea of bloque.split(/\r?\n/)) {
-          if (linea.startsWith(":")) continue; // comentario (keepalive)
-          if (linea.startsWith("event:")) evento = linea.slice(6).trim();
-          else if (linea.startsWith("data:")) datos.push(linea.slice(5).trimStart());
+      pending += value;
+      let cut: number;
+      while ((cut = pending.search(/\r?\n\r?\n/)) >= 0) {
+        const block = pending.slice(0, cut);
+        pending = pending.slice(cut).replace(/^\r?\n\r?\n/, "");
+        let event = "message";
+        const data: string[] = [];
+        for (const line of block.split(/\r?\n/)) {
+          if (line.startsWith(":")) continue; // comment (keepalive)
+          if (line.startsWith("event:")) event = line.slice(6).trim();
+          else if (line.startsWith("data:")) data.push(line.slice(5).trimStart());
         }
-        if (datos.length) yield { evento, datos: JSON.parse(datos.join("\n")) as T };
+        if (data.length) yield { event, data: JSON.parse(data.join("\n")) as T };
       }
     }
   } finally {
-    lector.cancel().catch(() => undefined);
+    reader.cancel().catch(() => undefined);
   }
 }

@@ -1,63 +1,63 @@
 // ============================================================================
-// TABLERO DE UN MUNICIPIO — ISR (Incremental Static Regeneration)
+// A MUNICIPALITY'S DASHBOARD — ISR (Incremental Static Regeneration)
 // ----------------------------------------------------------------------------
-// - generateStaticParams: en el build se genera un HTML por cada municipio activo.
-// - revalidate: la versión en caché vale como máximo 1 hora; la siguiente visita después de
-//   eso recibe la versión vieja y dispara la regeneración en segundo plano.
-// - Revalidación bajo demanda: el backend llama a /api/revalidar al terminar el cron diario
-//   o un reentrenamiento, así el tablero se regenera apenas hay datos nuevos.
-// - dynamicParams: un municipio creado después del build se genera en su primera visita.
+// - generateStaticParams: at build time one HTML is generated per active municipality.
+// - revalidate: the cached version lasts at most 1 hour; the next visit after that gets the old
+//   version and triggers a regeneration in the background.
+// - On-demand revalidation: the backend calls /api/revalidate when the daily update or a
+//   retraining finishes, so the dashboard regenerates as soon as there is new data.
+// - dynamicParams: a municipality created after the build is generated on its first visit.
 // ============================================================================
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { RenderPanel } from "@/components/render/RenderPanel";
-import { pedir } from "@/lib/servidor";
-import { cargarTablero, municipiosActivos, SEMANAS_MAXIMAS } from "@/lib/tablero";
-import TableroMunicipio from "@/vistas/TableroMunicipio";
+import { activeMunicipalities, loadDashboard, MAX_WEEKS } from "@/lib/dashboard";
+import { fetchApi } from "@/lib/serverFetch";
+import MunicipalityDashboard from "@/views/MunicipalityDashboard";
 
-export const revalidate = 3600; // = REVALIDAR_TABLEROS (Next.js exige un literal aquí)
+export const revalidate = 3600; // = DASHBOARD_REVALIDATE_S (Next.js requires a literal here)
 export const dynamicParams = true;
 
 type Props = { params: Promise<{ id: string }> };
 
 export async function generateStaticParams() {
   try {
-    // La lista puede venir de la caché de datos de un build anterior (Vercel la conserva):
-    // antes de prometer un HTML por municipio se confirma que la API responde ahora mismo.
-    await pedir("/municipios", { limit: 1 }, { cache: "no-store", timeoutMs: 15_000 });
-    return (await municipiosActivos()).map((m) => ({ id: String(m.id) }));
+    // The list may come from the data cache of a previous build (Vercel keeps it): before promising
+    // one HTML per municipality, confirm that the API answers right now.
+    await fetchApi("/municipalities", { limit: 1 }, { cache: "no-store", timeoutMs: 15_000 });
+    return (await activeMunicipalities()).map((m) => ({ id: String(m.id) }));
   } catch {
-    // La API (Render, plan gratis) puede estar dormida durante el build: entonces cada
-    // tablero se genera en su primera visita y desde ahí queda en caché igual.
+    // The API (Render, free plan) may be asleep during the build: then each dashboard is generated
+    // on its first visit and stays cached from there on.
     return [];
   }
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params;
-  const municipio = (await municipiosActivos().catch(() => [])).find((m) => String(m.id) === id);
+  const municipality = (await activeMunicipalities().catch(() => [])).find((m) => String(m.id) === id);
   return {
-    title: municipio ? `Riesgo de brotes en ${municipio.nombre}` : "Tablero municipal",
-    description: municipio
-      ? `Semáforo epidemiológico, predicción a 4 semanas y clima de ${municipio.nombre} (zona del Volcán Galeras).`
+    title: municipality ? `Riesgo de brotes en ${municipality.name}` : "Tablero municipal",
+    description: municipality
+      ? `Semáforo epidemiológico, predicción a 4 semanas y clima de ${municipality.name} (zona del Volcán Galeras).`
       : undefined,
   };
 }
 
-export default async function PaginaMunicipio({ params }: Props) {
+export default async function MunicipalityPage({ params }: Props) {
   const { id } = await params;
   if (!/^\d+$/.test(id)) notFound();
-  const datos = await cargarTablero(Number(id));
-  if (!datos) notFound();
+  const data = await loadDashboard(Number(id));
+  if (!data) notFound();
 
   return (
     <div className="space-y-5">
-      <RenderPanel patron="ISR" generadoEn={datos.generadoEn} ruta={`/municipio/${id}`}
-        detalles={[
-          { etiqueta: "Peticiones a la API al generar", valor: `${datos.peticiones} (en paralelo)` },
-          { etiqueta: "Datos incluidos en el HTML", valor: `${datos.resumen.riesgos.length} enfermedades × ${SEMANAS_MAXIMAS} semanas` },
+      <RenderPanel pattern="ISR" generatedAt={data.generatedAt} path={`/municipio/${id}`}
+        details={[
+          { label: "Peticiones a la API al generar", value: `${data.requests} (en paralelo)` },
+          { label: "Datos incluidos en el HTML", value: `${data.summary.risks.length} enfermedades × ${MAX_WEEKS} semanas` },
         ]} />
-      <TableroMunicipio datos={datos} />
+      <MunicipalityDashboard data={data} />
     </div>
   );
 }

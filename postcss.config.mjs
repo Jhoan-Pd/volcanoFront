@@ -1,2 +1,2 @@
-// Tailwind CSS v4 como plugin de PostCSS (Next.js procesa el CSS con PostCSS)
+// Tailwind CSS v4 as a PostCSS plugin (Next.js processes the CSS with PostCSS)
 export default { plugins: { "@tailwindcss/postcss": {} } };

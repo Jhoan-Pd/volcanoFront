@@ -1,12 +1,12 @@
-// LOGIN — CSR: el formulario y la sesión (token en localStorage) viven en el navegador.
+// LOGIN — CSR: the form and the session (token in localStorage) live in the browser.
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { Spinner } from "@/components/ui";
-import LoginPage from "@/vistas/LoginPage";
+import LoginView from "@/views/LoginPage";
 
 export const metadata: Metadata = { title: "Ingresar" };
 
-export default function PaginaLogin() {
-  // useSearchParams (?desde=) exige un límite de Suspense para que el resto se pueda prerenderizar
-  return <Suspense fallback={<Spinner />}><LoginPage /></Suspense>;
+export default function LoginPage() {
+  // useSearchParams (?desde=) requires a Suspense boundary so the rest can be prerendered
+  return <Suspense fallback={<Spinner />}><LoginView /></Suspense>;
 }

@@ -1,8 +1,8 @@
 import type { NextConfig } from "next";
 
-// La URL de la API se lee de NEXT_PUBLIC_API_URL. Se acepta también VITE_API_URL (la variable
-// que usaba la versión con Vite) para no romper el proyecto ya configurado en Vercel.
-const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? process.env.VITE_API_URL ?? "http://localhost:8000").replace(/\/$/, "");
+// The API URL is read from NEXT_PUBLIC_API_URL. VITE_API_URL (the variable the Vite version used)
+// is still accepted so the project already configured on Vercel keeps working.
+const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? process.env.VITE_API_URL ?? "http://localhost:10000").replace(/\/$/, "");
 
 const nextConfig: NextConfig = {
   env: { NEXT_PUBLIC_API_URL: API_URL },

@@ -1,15 +1,15 @@
 // ============================================================================
-// SIMULADOR «¿QUÉ PASA SI…?» — CSR (Client-Side Rendering)
+// «WHAT IF…?» SIMULATOR — CSR (Client-Side Rendering)
 // ----------------------------------------------------------------------------
-// Conversación en vivo con el motor: el navegador abre un WebSocket y la API lo conecta con el
-// stream BIDIRECCIONAL de gRPC SimularEscenarios. La matriz de sensibilidad la calcula un
-// Web Worker con su propio WebSocket. También muestra una llamada unary (Predecir).
+// A live conversation with the engine: the browser talks to the realtime hub over a WebSocket and
+// the hub bridges it to the BIDIRECTIONAL gRPC stream SimulateScenarios. The sensitivity matrix is
+// computed by a Web Worker over its own WebSocket. It also shows a unary call (Predict).
 // ============================================================================
 import type { Metadata } from "next";
-import Simulador from "@/vistas/Simulador";
+import Simulator from "@/views/Simulator";
 
 export const metadata: Metadata = { title: "Simulador de escenarios", description: "¿Qué pasa si llueve más o suben las búsquedas? El modelo responde en vivo." };
 
-export default function PaginaSimulador() {
-  return <Simulador />;
+export default function SimulatorPage() {
+  return <Simulator />;
 }
